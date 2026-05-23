@@ -24,3 +24,6 @@
 .env
 .env.*
 !.env.example
+
+# Local probe runtime artifacts.
+/.fawkes_probe/
