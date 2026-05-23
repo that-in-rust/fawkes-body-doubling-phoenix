@@ -38,6 +38,7 @@ pub fn summarize_capture_records(run_id: &str, records: &[CaptureRecord]) -> Run
                 task_status: record.task_status,
                 activity_category: record.activity_category,
                 confidence: record.confidence,
+                reason: record.reason.clone(),
                 latency_ms: record.latency_ms,
                 error: record.error.clone(),
             }

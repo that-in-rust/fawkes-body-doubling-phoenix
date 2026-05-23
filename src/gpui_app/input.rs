@@ -92,6 +92,11 @@ impl SingleLineInput {
         }
     }
 
+    #[cfg(test)]
+    pub fn is_disabled_state(&self) -> bool {
+        self.is_disabled
+    }
+
     fn cursor_offset(&self) -> usize {
         if self.selection_reversed {
             self.selected_range.start

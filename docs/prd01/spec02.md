@@ -1,198 +1,206 @@
-# Fawkes GPUI Spike Executable Specification
+# Fawkes GPUI Overlay Executable Specification
 
 **Repo:** `that-in-rust/fawkes-body-doubling-phoenix`  
-**Derived from:** [spec01.md](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/docs/prd01/spec01.md), [min01.md](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/docs/prd01/min01.md)  
-**Milestone:** `Milestone 0B - Minimal GPUI Count Spike`  
+**Milestone:** `Milestone 0C - Minimal GPUI Fixed-Cadence Summary`  
 **Runtime:** Rust + Zed GPUI on macOS 13+ with Apple Silicon  
-**Primary Outcome:** Add a super-minimal native macOS GPUI window that starts a count-based focus probe and shows a post-session summary while reusing the existing probe library in-process
+**Primary Outcome:** Keep the working CLI unchanged, simplify the overlay UI to `task + count`, fix the capture cadence at 15 seconds, and show both aggregate summary counts and one-line per-capture descriptions after the run
 
 ## Scope
 
 This specification covers one minimal GPUI app window with:
 
 - one single-line task input
-- one interval input in seconds
-- one capture-count input
+- one count input
+- one visible helper note that the capture interval is fixed at 15 seconds
 - one `Start` action
-- one session summary view after the run ends
+- one running state
+- one post-run summary view with aggregate counts and one-line per-capture descriptions
 
 Out of scope for this milestone:
 
+- any CLI contract changes
+- editable interval controls in the overlay
+- time-in-minutes inputs
 - menu-bar integration
 - settings panels
 - historical timeline browsing
 - nudges during the session
 - Gemini or Vertex AI
-- multiple windows for different flows
-- dissociation verdict heuristics
-- packaging polish beyond a runnable macOS GUI binary
-- replacing the existing CLI proof harness during development
-- hard guarantees about appearing above OS-reserved alerts or every fullscreen context
+- popup/all-spaces behavior
+- dissociation heuristics beyond the existing model classifications
 
 ## Implementation Context
 
-This spec is grounded in the local Zed GPUI reference checkout:
+This spec is grounded in the current codebase:
 
-- GPUI apps open windows with `App::open_window(...)` as shown in [hello_world.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/reference-repos/zed/crates/gpui/examples/hello_world.rs:92)
-- GPUI exposes `WindowKind::Floating` and `WindowKind::PopUp` in [platform.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/reference-repos/zed/crates/gpui/src/platform.rs:1576)
-- GPUI macOS maps `WindowKind::PopUp` to a higher native window level and `canJoinAllSpaces`-style behavior in [window.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/reference-repos/zed/crates/gpui_macos/src/window.rs:908)
-- GPUI text input is available, but the local reference shape is a custom input pattern rather than a trivial built-in one-liner, as shown in [input.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/reference-repos/zed/crates/gpui/examples/input.rs:36)
+- the existing CLI path already works and must stay stable in [src/main.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/main.rs)
+- the overlay currently renders `task`, `interval`, `count`, `Start`, and an aggregate summary in [src/gpui_app/mod.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/gpui_app/mod.rs)
+- the overlay form state still includes `interval_text` and validates it in [src/gpui_app/model.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/gpui_app/model.rs)
+- the programmatic overlay request path already exists in [src/application/config.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/application/config.rs)
+- per-attempt summary lines already exist in [src/core/types.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/core/types.rs)
+- per-attempt `reason` is already carried into the run summary in [src/core/summary.rs](/Users/neetipatni/Desktop/fawkes-body-doubling-phoenix/src/core/summary.rs)
 
-The app SHALL reuse the existing probe library logic directly and SHALL not shell out to the CLI binary during normal app execution.
+The implementation goal here is therefore a UI refinement, not a new probe architecture.
 
 ## Executable Requirements
 
-### REQ-UI-001.0: Render the minimal session form
+### REQ-CLI-101.0: Preserve the working CLI contract
 
-**WHEN** the app launches successfully  
-**THEN** the system SHALL open exactly one primary GPUI window with a single-line task field, an interval-in-seconds field, a count field, and a `Start` button  
-**AND** SHALL render all controls without requiring any secondary dialog before the user can begin a session  
-**SHALL** keep the initial UI limited to one visible form and no historical panels
+**WHEN** this UI milestone is implemented  
+**THEN** the system SHALL leave the existing CLI entrypoint and `--goal --interval --count` behavior unchanged  
+**AND** SHALL avoid introducing new required CLI flags for the overlay flow  
+**SHALL** keep the overlay as a second Rust binary that reuses library code in-process
 
-### REQ-VAL-001.0: Validate session form inputs before starting
+### REQ-UI-102.0: Render the smallest useful fixed-cadence form
+
+**WHEN** the overlay launches successfully  
+**THEN** the system SHALL open one floating GPUI window with exactly one task field, one count field, and one `Start` button  
+**AND** SHALL show visible copy that the capture interval is fixed at `15 seconds`  
+**SHALL** avoid rendering an editable interval input in this milestone
+
+### REQ-VAL-103.0: Validate only task and count inline
 
 **WHEN** the user presses `Start`  
-**THEN** the system SHALL reject an empty task, `interval_seconds < 5`, or `count < 1` before any capture starts  
-**AND** SHALL show the validation failure inline in the same window without crashing or closing the app  
-**SHALL** create no screenshots and no SQLite capture rows when validation fails
+**THEN** the system SHALL reject an empty task or `count < 1` inline in the same window before any capture starts  
+**AND** SHALL keep the validation failure visible without closing or crashing the app  
+**SHALL** create no screenshots and no SQLite rows when inline validation fails
 
-### REQ-APP-001.0: Validate runtime prerequisites in-app
+### REQ-APP-104.0: Validate startup prerequisites without changing the CLI
 
-**WHEN** the user starts a valid session  
-**THEN** the system SHALL validate `OPENAI_API_KEY` availability and screen-capture readiness before the first timed iteration  
-**AND** SHALL show remediation text in the app window when either prerequisite is missing  
-**SHALL** create no screenshots and no SQLite capture rows when startup prerequisites fail
+**WHEN** the user starts a valid overlay session  
+**THEN** the system SHALL validate `OPENAI_API_KEY` availability and screen-capture readiness before the first timed capture  
+**AND** SHALL show remediation text in the overlay window when either prerequisite is missing  
+**SHALL** create no screenshots and no SQLite rows when startup prerequisites fail
 
-### REQ-WIN-001.0: Open the app as a minimal floating window
+### REQ-SES-105.0: Run overlay sessions at a fixed 15-second cadence
 
-**WHEN** the app opens its primary window on macOS  
-**THEN** the system SHALL request a GPUI window kind equivalent to `WindowKind::Floating` for the first implementation  
-**AND** SHALL keep the window focused and usable as the single app surface for starting and observing a session  
-**SHALL** avoid depending on popup-specific or all-spaces behavior in this first GPUI spike
+**WHEN** the user starts a valid session with `count = N`  
+**THEN** the system SHALL run exactly `N` capture-classify-persist attempts at a fixed interval of `15 seconds` between attempts  
+**AND** SHALL derive the overlay session duration from `count * 15 seconds` rather than from a separate interval input  
+**SHALL** avoid exposing interval mutability in the overlay while leaving CLI interval behavior untouched
 
-### REQ-SES-001.0: Derive a count-based session from interval and count
+### REQ-SES-106.0: Keep the existing in-process probe path
 
-**WHEN** the user starts a valid session with `interval_seconds` and `count`  
-**THEN** the system SHALL run exactly `count` capture-classify-persist cycles at the chosen interval without overlapping attempts  
-**AND** SHALL stop after the final scheduled attempt completes  
-**SHALL** avoid inventing a separate minutes-based duration control in this milestone
+**WHEN** the overlay runs a session  
+**THEN** the system SHALL call the existing Rust probe library directly through programmatic config and launcher interfaces  
+**AND** SHALL continue storing runtime artifacts under `.fawkes_probe/` using the existing SQLite and per-run capture layout  
+**SHALL** avoid spawning the CLI binary as a child process during normal GUI execution
 
-### REQ-SES-002.0: Lock the form while a session is running
+### REQ-SES-107.0: Lock editing during a running session
 
 **WHEN** a session begins  
-**THEN** the system SHALL disable editing of the task, interval, and count inputs until the session completes or fails  
-**AND** SHALL replace or disable the `Start` button so the user cannot start a second overlapping session  
-**SHALL** show a visible running-state indicator in the same window
+**THEN** the system SHALL disable further task and count editing until the session completes or fails  
+**AND** SHALL prevent overlapping starts from the same window  
+**SHALL** show a visible running-state indicator that the probe is capturing every 15 seconds
 
-### REQ-SES-003.0: Reuse the existing probe pipeline in-process
-
-**WHEN** the app executes a running session  
-**THEN** the system SHALL call the existing Rust capture, downscale, classify, persist, and summary logic directly through library interfaces  
-**AND** SHALL continue storing runtime artifacts under `.fawkes_probe/` using the same SQLite and per-run capture layout as the CLI milestone  
-**SHALL** avoid spawning a child `fawkes_probe` process during the normal GUI run path
-
-### REQ-RPT-001.0: Show a session summary when the run ends
+### REQ-RPT-108.0: Show aggregate summary data after the run
 
 **WHEN** the final scheduled attempt finishes  
-**THEN** the system SHALL replace the running state with a summary view in the same window  
-**AND** SHALL show at minimum `on_task`, `off_task`, `ambiguous`, `error`, and average latency counts for that run  
-**SHALL** include the run identifier so the user can trace the session back to SQLite and saved captures
+**THEN** the system SHALL render a summary panel in the same window showing `run_id`, `on_task`, `off_task`, `ambiguous`, `error`, and `avg_latency_ms`  
+**AND** SHALL keep those fields traceable to the same run stored in SQLite  
+**SHALL** replace the running-state panel with this summary in the same window
 
-### REQ-RPT-002.0: Show a plain-language summary sentence
+### REQ-RPT-109.0: Show one-line per-capture descriptions
 
-**WHEN** the summary is rendered  
-**THEN** the system SHALL show one short human-readable sentence that names the total `on_task` and `off_task` counts for the run  
-**AND** SHALL avoid provider jargon such as `task_status` or `structured output` in the end-user summary sentence  
-**SHALL** remain understandable without opening SQLite or reading logs
+**WHEN** a run summary is displayed  
+**THEN** the system SHALL render one summary line per capture attempt using the captured classification context already stored in the run summary  
+**AND** SHALL include a short description derived from the model `reason` when present, or a compact error description when that attempt failed  
+**SHALL** preserve attempt ordering from the completed run
 
-### REQ-ERR-001.0: Surface recoverable provider failures in-session
+### REQ-RPT-110.0: Keep per-capture descriptions readable in one window
 
-**WHEN** one or more provider requests fail during a running session  
-**THEN** the system SHALL continue later attempts when the failure is recoverable under the existing probe rules  
-**AND** SHALL include the resulting `error` count in the final summary view  
-**SHALL** avoid crashing the window or closing the app because of one recoverable iteration failure
+**WHEN** the number of summary lines exceeds the visible summary area  
+**THEN** the system SHALL keep all description lines reachable in the same window through a scrollable region or an equivalent non-lossy layout  
+**AND** SHALL avoid truncating the run to aggregate counts only  
+**SHALL** keep each description line to one visual row when practical, using concise wording rather than multi-paragraph detail
 
-### REQ-BIN-001.0: Produce a user-runnable GPUI app binary
+### REQ-RPT-111.0: Keep the end-user explanation plain
 
-**WHEN** the milestone is built in development mode  
-**THEN** the system SHALL produce one directly runnable GPUI macOS executable target for the UI flow in addition to the existing CLI path  
-**AND** SHALL keep the UI path implemented in Rust without Electron, Tauri, or webview dependencies  
-**SHALL** preserve the existing library reuse path so the same core logic is shared between CLI verification and GUI execution
+**WHEN** the summary panel is shown  
+**THEN** the system SHALL continue showing one plain-language overview sentence in addition to the per-capture lines  
+**AND** SHALL avoid provider jargon such as `structured output` or `task_status` in that human-facing sentence  
+**SHALL** remain understandable without opening SQLite or inspecting logs
+
+### REQ-ERR-112.0: Preserve recoverable iteration behavior
+
+**WHEN** one or more provider requests fail recoverably during the overlay session  
+**THEN** the system SHALL preserve the existing continuation behavior for later attempts  
+**AND** SHALL surface those failures through the final `error` count and per-attempt error descriptions  
+**SHALL** avoid crashing or freezing the window because of one recoverable iteration failure
 
 ## Test Matrix
 
 | req_id | test_id | type | assertion | target |
 | --- | --- | --- | --- | --- |
-| REQ-UI-001.0 | TEST-GPUI-UNIT-001 | unit | launches one root view with task, interval, count, and start controls visible | rendering |
-| REQ-VAL-001.0 | TEST-GPUI-UNIT-002 | unit | rejects empty task and invalid interval or count values before session creation | validation |
-| REQ-APP-001.0 | TEST-GPUI-INTEG-003 | integration | missing `OPENAI_API_KEY` or screen permission shows inline remediation and creates no artifacts | startup safety |
-| REQ-WIN-001.0 | TEST-GPUI-INTEG-004 | integration | primary window requests floating-window behavior on macOS | overlay |
-| REQ-SES-001.0 | TEST-GPUI-UNIT-006 | unit | count-based session launcher runs the requested number of attempts without overlapping starts | control flow |
-| REQ-SES-002.0 | TEST-GPUI-UNIT-007 | unit | running state disables inputs and prevents overlapping sessions | control flow |
-| REQ-SES-003.0 | TEST-GPUI-INTEG-008 | integration | GUI session calls library probe services directly and persists rows under `.fawkes_probe/` | reuse |
-| REQ-RPT-001.0 | TEST-GPUI-INTEG-009 | integration | completed session swaps to a summary view with counts and run id | reporting |
-| REQ-RPT-002.0 | TEST-GPUI-UNIT-010 | unit | summary explanation names on-task and off-task totals in plain language | usability |
-| REQ-ERR-001.0 | TEST-GPUI-INTEG-012 | integration | recoverable provider failures increment error count without terminating the window | resilience |
-| REQ-BIN-001.0 | TEST-GPUI-BUILD-013 | build | GUI target builds successfully as a Rust GPUI executable without webview dependencies | packaging |
+| REQ-CLI-101.0 | TEST-GPUI-UNIT-001 | unit | CLI main path and existing `--goal --interval --count` contract remain unchanged | compatibility |
+| REQ-UI-102.0 | TEST-GPUI-UNIT-002 | gpui unit | overlay form renders task, count, fixed-15-second note, and start button with no editable interval field | rendering |
+| REQ-VAL-103.0 | TEST-GPUI-UNIT-003 | gpui unit | empty task and invalid count show inline validation and do not launch a session | validation |
+| REQ-APP-104.0 | TEST-GPUI-INTEG-004 | integration | missing `OPENAI_API_KEY` or screen-preflight failure surfaces remediation and creates no artifacts | startup safety |
+| REQ-SES-105.0 | TEST-GPUI-UNIT-005 | unit | overlay request builder uses fixed `15` seconds for every overlay session | cadence |
+| REQ-SES-106.0 | TEST-GPUI-INTEG-006 | integration | GUI path calls the library runner directly and writes artifacts under `.fawkes_probe/` | reuse |
+| REQ-SES-107.0 | TEST-GPUI-UNIT-007 | gpui unit | running state disables task and count inputs and blocks overlapping starts | control flow |
+| REQ-RPT-108.0 | TEST-GPUI-INTEG-008 | integration | completed run swaps to aggregate summary counts with `run_id` and latency | reporting |
+| REQ-RPT-109.0 | TEST-GPUI-UNIT-009 | unit | per-attempt summary view preserves run order and surfaces reason-or-error text for each capture | reporting |
+| REQ-RPT-110.0 | TEST-GPUI-UNIT-010 | gpui unit | description list remains reachable when capture count exceeds the initial visible area | layout |
+| REQ-RPT-111.0 | TEST-GPUI-UNIT-011 | unit | overview sentence remains plain-language while per-attempt lines add detail | usability |
+| REQ-ERR-112.0 | TEST-GPUI-INTEG-012 | integration | recoverable provider failures still end in a completed summary with nonzero error count and error lines | resilience |
 
 ## TDD Plan
 
 1. STUB
-- Add a new GPUI app module and failing tests for form rendering, validation, count-based launch behavior, summary rendering, and plain-language summary formatting.
-- Add a fake in-process session runner so GPUI tests do not need real screen capture or network calls.
-- Add a platform window configuration seam so macOS window kind requests can be asserted without visual inspection alone.
+- Add failing GPUI tests for the reduced form shape: task, count, fixed 15-second note, and no editable interval field.
+- Add failing model tests for inline count validation and fixed-cadence overlay request construction.
+- Add failing summary tests for one-line per-attempt descriptions using existing `RunSummary.lines`.
+- Add a failing UI test for a summary panel that preserves all attempt lines in a reachable layout.
 
 2. RED
-- Run the GPUI test suite and confirm failures for missing root view, missing validated form model, missing count-based session controller, and missing summary reducer wiring.
-- Record which failures belong to view rendering versus probe-service integration.
+- Run the GPUI and unit tests and confirm failures for the old interval field, missing fixed-cadence note, missing per-attempt lines, and missing scroll-or-equivalent summary layout.
+- Confirm the CLI tests still pass unchanged.
 
 3. GREEN
-- Implement the minimal form view first.
-- Implement validated form state and inline error messages second.
-- Implement count-based session derivation and a single running-state view third.
-- Reuse the existing probe library through an in-process session service fourth.
-- Implement the summary view last.
+- Remove interval editing from the overlay form model and view.
+- Route the overlay through the fixed 15-second overlay request builder while leaving CLI interval parsing untouched.
+- Extend the overlay summary view model to carry one-line attempt descriptions derived from `RunSummary.lines`.
+- Render the aggregate summary plus the ordered description list in one window.
+- Keep startup preflight, in-process execution, and runtime artifact locations unchanged.
 
 4. REFACTOR
-- Keep new symbols to four-word names where practical, such as:
-  - `render_minimal_session_form`
-  - `validate_session_form_fields`
-  - `derive_session_attempt_schedule`
-  - `start_overlay_probe_session`
-  - `render_running_session_state`
-  - `render_session_summary_panel`
-  - `format_plain_summary_sentence`
-  - `open_floating_probe_window`
-- Keep GPUI view state separate from probe execution services.
-- Keep macOS window-configuration logic isolated so later menu-bar or packaging work does not leak into session logic.
+- Keep new symbol names to four words where practical, such as:
+  - `build_overlay_attempt_descriptions`
+  - `render_fixed_interval_note`
+  - `render_attempt_description_list`
+  - `format_attempt_reason_line`
+  - `validate_overlay_count_field`
+- Keep GPUI layout logic in `gpui_app`.
+- Keep summary-line derivation in `core` or a UI-facing adapter layer rather than scattering formatting rules across the window render path.
 
 5. VERIFY
 - Run `cargo fmt --all -- --check`.
 - Run `cargo clippy --all-targets --all-features -- -D warnings`.
 - Run `cargo test --all-targets --all-features`.
-- Run a manual macOS smoke test that confirms:
-  - the window opens
-  - the window behaves like a floating app window
-  - the form starts a real timed session
-  - the summary appears at the end with raw counts
+- Run `cargo build --all-targets --all-features`.
+- Run a manual GUI smoke test that confirms:
+  - the overlay shows `task + count` only
+  - the helper note says the interval is fixed at 15 seconds
+  - the session runs at the fixed cadence
+  - the final summary shows both aggregate counts and one-line per-capture descriptions
 
 ## Quality Gates
 
-- [ ] Every new requirement has a stable `REQ-*` identifier.
+- [ ] Every requirement has a stable `REQ-*` identifier.
 - [ ] Every `REQ-*` identifier appears in the test matrix.
-- [ ] The GPUI app reuses library probe services instead of spawning the CLI binary.
-- [ ] `.fawkes_probe/` remains the only runtime artifact directory for screenshots and SQLite session data.
+- [ ] The CLI contract remains unchanged.
+- [ ] The overlay no longer exposes an editable interval field.
+- [ ] Overlay sessions always use a fixed 15-second cadence.
+- [ ] The final summary shows aggregate counts and one-line per-capture descriptions.
+- [ ] `.fawkes_probe/` remains the only runtime artifact directory for overlay runs.
 - [ ] `cargo fmt --all -- --check` passes.
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes.
 - [ ] `cargo test --all-targets --all-features` passes.
-- [ ] No new `TODO`, `STUB`, or `FIXME` markers remain in committed app code.
-- [ ] No unmeasured claims are made about “always foreground” or all-spaces behavior in the first GUI milestone.
-- [ ] The manual smoke test verifies that the session summary includes raw counts and a plain-language sentence.
+- [ ] `cargo build --all-targets --all-features` passes.
+- [ ] No new `TODO`, `STUB`, or `FIXME` markers remain in committed implementation code.
 
 ## Open Questions
 
-1. Should the GUI milestone ship as a second binary during development while keeping the CLI harness, or should we replace the existing binary entrypoint immediately?
-2. Should the session begin with an immediate first capture, or should the first capture wait one full interval after pressing `Start`?
-3. Do we want the floating window to be dismissible during a session, or must it remain present until the summary is shown?
-4. Should the summary show the per-capture descriptions inline, or remain limited to aggregate counts plus one sentence in this milestone?
-5. After the floating-window spike works, do we still want a second pass that experiments with `WindowKind::PopUp` for stronger overlay behavior?
+1. No blocking product questions remain for this UI slice.
+2. The only implementation choice left open is whether the per-attempt list should use a scroll region or a larger auto-sized summary panel, as long as no attempt descriptions are lost.

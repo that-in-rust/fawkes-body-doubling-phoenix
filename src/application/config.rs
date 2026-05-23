@@ -9,6 +9,7 @@ use crate::core::types::{ProbeAttemptCount, ProbeGoal, ProbeIntervalSecs};
 
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1-mini";
 const DEFAULT_OUTPUT_DIR: &str = ".fawkes_probe";
+pub const OVERLAY_CAPTURE_INTERVAL_SECS: u64 = 15;
 
 #[derive(Debug, Clone)]
 pub struct ProbeSessionRequest {
@@ -36,14 +37,10 @@ impl ProbeSessionRequest {
         }
     }
 
-    pub fn build_overlay_request(
-        goal_text: impl Into<String>,
-        interval_secs: u64,
-        attempt_count: u32,
-    ) -> Self {
+    pub fn build_overlay_request(goal_text: impl Into<String>, attempt_count: u32) -> Self {
         Self::new(
             goal_text,
-            interval_secs,
+            OVERLAY_CAPTURE_INTERVAL_SECS,
             attempt_count,
             DEFAULT_OPENAI_MODEL,
             PathBuf::from(DEFAULT_OUTPUT_DIR),
@@ -143,7 +140,7 @@ mod tests {
     use crate::cli::CliArgs;
     use crate::core::error::ProbeError;
 
-    use super::{ProbeRunConfig, ProbeSessionRequest};
+    use super::{OVERLAY_CAPTURE_INTERVAL_SECS, ProbeRunConfig, ProbeSessionRequest};
 
     fn create_test_cli_args(interval: u64, count: u32) -> CliArgs {
         CliArgs {
@@ -191,13 +188,13 @@ mod tests {
     #[test]
     fn test_req_rust_104_builds_programmatic_probe_config() {
         let config = ProbeRunConfig::build_programmatic_config_with_key(
-            ProbeSessionRequest::build_overlay_request("study Rust", 10, 3),
+            ProbeSessionRequest::build_overlay_request("study Rust", 3),
             Some("test-key".to_owned()),
         )
         .expect("programmatic config should build");
 
         assert_eq!(config.goal().as_str(), "study Rust");
-        assert_eq!(config.interval().as_u64(), 10);
+        assert_eq!(config.interval().as_u64(), OVERLAY_CAPTURE_INTERVAL_SECS);
         assert_eq!(config.count().as_u32(), 3);
         assert_eq!(config.model_name(), "gpt-4.1-mini");
         assert_eq!(config.output_dir(), Path::new(".fawkes_probe"));

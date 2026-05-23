@@ -9,12 +9,13 @@ use gpui::{
     actions, div, prelude::*, px, rgb, size,
 };
 
-use crate::application::config::ProbeRunConfig;
+use crate::application::config::{OVERLAY_CAPTURE_INTERVAL_SECS, ProbeRunConfig};
 use crate::application::session::{LiveProbeSessionLauncher, ProbeSessionLaunchBehavior};
 use crate::core::types::RunSummary;
 use crate::gpui_app::input::{SingleLineInput, bind_text_input_keys};
 use crate::gpui_app::model::{
-    OverlayFormFields, OverlaySessionState, OverlayViewModel, validate_session_form_fields,
+    OverlayAttemptDescription, OverlayFormFields, OverlaySessionState, OverlayViewModel,
+    format_attempt_display_line, validate_session_form_fields,
 };
 
 actions!(overlay_window, [Quit]);
@@ -25,7 +26,7 @@ pub fn run_fawkes_overlay() {
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.bind_keys([gpui::KeyBinding::new("cmd-q", Quit, None)]);
 
-        let bounds = Bounds::centered(None, size(px(420.), px(420.)), cx);
+        let bounds = Bounds::centered(None, size(px(520.), px(680.)), cx);
         let launcher: Arc<dyn ProbeSessionLaunchBehavior> = Arc::new(LiveProbeSessionLauncher);
 
         let window = cx
@@ -53,7 +54,6 @@ pub fn run_fawkes_overlay() {
 struct ProbeOverlayView {
     launcher: Arc<dyn ProbeSessionLaunchBehavior>,
     task_input: Entity<SingleLineInput>,
-    interval_input: Entity<SingleLineInput>,
     count_input: Entity<SingleLineInput>,
     view_model: OverlayViewModel,
 }
@@ -61,13 +61,11 @@ struct ProbeOverlayView {
 impl ProbeOverlayView {
     fn new(launcher: Arc<dyn ProbeSessionLaunchBehavior>, cx: &mut Context<Self>) -> Self {
         let task_input = cx.new(|cx| SingleLineInput::new("Describe the task", "", cx));
-        let interval_input = cx.new(|cx| SingleLineInput::new("Interval seconds", "30", cx));
         let count_input = cx.new(|cx| SingleLineInput::new("Count", "6", cx));
 
         Self {
             launcher,
             task_input,
-            interval_input,
             count_input,
             view_model: OverlayViewModel::default(),
         }
@@ -83,15 +81,12 @@ impl ProbeOverlayView {
     fn read_form_fields(&self, cx: &App) -> OverlayFormFields {
         OverlayFormFields {
             task_text: self.task_input.read(cx).current_text(),
-            interval_text: self.interval_input.read(cx).current_text(),
             count_text: self.count_input.read(cx).current_text(),
         }
     }
 
     fn set_inputs_disabled(&mut self, is_disabled: bool, cx: &mut Context<Self>) {
         self.task_input
-            .update(cx, |input, _cx| input.set_disabled_state(is_disabled));
-        self.interval_input
             .update(cx, |input, _cx| input.set_disabled_state(is_disabled));
         self.count_input
             .update(cx, |input, _cx| input.set_disabled_state(is_disabled));
@@ -194,6 +189,23 @@ impl ProbeOverlayView {
         }
     }
 
+    fn render_fixed_interval_note(&self) -> AnyElement {
+        div()
+            .rounded_lg()
+            .bg(rgb(0xf8fafc))
+            .border_1()
+            .border_color(rgb(0xcbd5e1))
+            .px_3()
+            .py_2()
+            .text_sm()
+            .text_color(rgb(0x334155))
+            .child(format!(
+                "Capture interval is fixed at {} seconds. Count controls how many checks run.",
+                OVERLAY_CAPTURE_INTERVAL_SECS
+            ))
+            .into_any_element()
+    }
+
     fn render_start_button(&self, cx: &Context<Self>) -> AnyElement {
         let (label, background, text_color, border_color) = if self.view_model.is_running_session()
         {
@@ -230,7 +242,10 @@ impl ProbeOverlayView {
             .py_3()
             .text_sm()
             .text_color(rgb(0x1d4ed8))
-            .child("Session running. Fawkes is capturing, classifying, and storing each attempt.")
+            .child(format!(
+                "Session running. Fawkes is capturing, classifying, and storing each attempt every {} seconds.",
+                OVERLAY_CAPTURE_INTERVAL_SECS
+            ))
             .into_any_element()
     }
 
@@ -266,7 +281,7 @@ impl ProbeOverlayView {
             .py_3()
             .flex()
             .flex_col()
-            .gap_1()
+            .gap_2()
             .child(
                 div()
                     .text_sm()
@@ -306,7 +321,54 @@ impl ProbeOverlayView {
                     .text_color(rgb(0x334155))
                     .child(summary.summary_sentence.clone()),
             )
+            .child(
+                div()
+                    .mt_1()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(rgb(0x0f172a))
+                    .child("Capture timeline (from stored run data)"),
+            )
+            .child(self.render_attempt_description_list(&summary.attempt_descriptions))
             .into_any_element()
+    }
+
+    fn render_attempt_description_list(
+        &self,
+        descriptions: &[OverlayAttemptDescription],
+    ) -> AnyElement {
+        let list_container = div()
+            .id("attempt-description-list")
+            .h(px(220.))
+            .overflow_y_scroll()
+            .rounded_lg()
+            .border_1()
+            .border_color(rgb(0xe2e8f0))
+            .bg(rgb(0xffffff))
+            .px_3()
+            .py_2()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .children(descriptions.iter().map(|description| {
+                div()
+                    .text_sm()
+                    .text_color(rgb(0x334155))
+                    .child(format_attempt_display_line(description))
+            }));
+
+        if descriptions.is_empty() {
+            list_container
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0x64748b))
+                        .child("No per-capture notes were recorded."),
+                )
+                .into_any_element()
+        } else {
+            list_container.into_any_element()
+        }
     }
 
     fn render_status_panel(&self) -> AnyElement {
@@ -351,11 +413,130 @@ impl Render for ProbeOverlayView {
                             ),
                     )
                     .child(self.render_field_group("Task", self.task_input.clone()))
-                    .child(self.render_field_group("Interval seconds", self.interval_input.clone()))
+                    .child(self.render_fixed_interval_note())
                     .child(self.render_field_group("Count", self.count_input.clone()))
                     .child(self.render_start_button(cx))
                     .child(self.render_inline_error_panel())
                     .child(self.render_status_panel()),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use chrono::Utc;
+    use gpui::{AppContext, TestAppContext, VisualTestContext};
+
+    use crate::application::config::ProbeRunConfig;
+    use crate::application::session::ProbeSessionLaunchBehavior;
+    use crate::core::error::ProbeError;
+    use crate::core::types::{AttemptSummaryLine, RunSummary, TaskStatus};
+
+    use super::ProbeOverlayView;
+
+    #[derive(Debug, Default)]
+    struct FakeProbeSessionLauncher;
+
+    impl ProbeSessionLaunchBehavior for FakeProbeSessionLauncher {
+        fn preflight_probe_session(&self, _config: &ProbeRunConfig) -> Result<(), ProbeError> {
+            Ok(())
+        }
+
+        fn launch_blocking_probe_session(
+            &self,
+            _config: ProbeRunConfig,
+        ) -> Result<RunSummary, ProbeError> {
+            Ok(create_test_run_summary(1))
+        }
+    }
+
+    fn create_test_run_summary(line_count: usize) -> RunSummary {
+        RunSummary {
+            run_id: "run-123".to_owned(),
+            lines: (0..line_count)
+                .map(|index| AttemptSummaryLine {
+                    captured_at: Utc::now().to_rfc3339(),
+                    task_status: Some(if index % 2 == 0 {
+                        TaskStatus::OnTask
+                    } else {
+                        TaskStatus::OffTask
+                    }),
+                    activity_category: None,
+                    confidence: Some(0.75),
+                    reason: Some(format!("Attempt {index} stayed visible")),
+                    latency_ms: Some(1234),
+                    error: None,
+                })
+                .collect(),
+            on_task_count: line_count.div_ceil(2),
+            off_task_count: line_count / 2,
+            ambiguous_count: 0,
+            error_count: 0,
+            average_latency_ms: Some(1234),
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+        }
+    }
+
+    #[gpui::test]
+    fn test_req_rust_207_long_summary_renders_in_window(cx: &mut TestAppContext) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| {
+                cx.new(|cx| ProbeOverlayView::new(Arc::new(FakeProbeSessionLauncher), cx))
+            })
+            .expect("window should open")
+        });
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        let root = window.root(&mut visual).expect("root view");
+
+        root.update_in(&mut visual, |view, _window, _cx| {
+            view.view_model
+                .record_completed_session(&create_test_run_summary(24));
+        });
+
+        root.read_with(&visual, |view, _| match &view.view_model.session_state {
+            crate::gpui_app::model::OverlaySessionState::Completed(summary) => {
+                assert_eq!(summary.attempt_descriptions.len(), 24);
+            }
+            other => panic!("unexpected state: {other:?}"),
+        });
+    }
+
+    #[gpui::test]
+    fn test_req_rust_208_running_state_disables_inputs_and_recovers(cx: &mut TestAppContext) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| {
+                cx.new(|cx| ProbeOverlayView::new(Arc::new(FakeProbeSessionLauncher), cx))
+            })
+            .expect("window should open")
+        });
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        let root = window.root(&mut visual).expect("root view");
+
+        root.update_in(&mut visual, |view, _window, cx| {
+            view.set_inputs_disabled(true, cx);
+            view.view_model.mark_running_session();
+        });
+
+        root.read_with(&visual, |view, cx| {
+            assert!(view.view_model.is_running_session());
+            assert!(view.task_input.read(cx).is_disabled_state());
+            assert!(view.count_input.read(cx).is_disabled_state());
+        });
+
+        root.update_in(&mut visual, |view, _window, cx| {
+            view.finish_session_result(Ok(create_test_run_summary(2)), cx);
+        });
+
+        root.read_with(&visual, |view, cx| {
+            assert!(!view.view_model.is_running_session());
+            assert!(!view.task_input.read(cx).is_disabled_state());
+            assert!(!view.count_input.read(cx).is_disabled_state());
+        });
     }
 }

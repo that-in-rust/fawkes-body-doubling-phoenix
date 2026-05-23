@@ -314,6 +314,7 @@ pub struct AttemptSummaryLine {
     pub task_status: Option<TaskStatus>,
     pub activity_category: Option<ActivityCategory>,
     pub confidence: Option<f64>,
+    pub reason: Option<String>,
     pub latency_ms: Option<u128>,
     pub error: Option<String>,
 }
