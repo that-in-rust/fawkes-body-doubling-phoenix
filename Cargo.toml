@@ -7,6 +7,7 @@ edition = "2024"
 base64 = "0.22.1"
 chrono = { version = "0.4.42", features = ["clock", "serde"] }
 clap = { version = "4.5.38", features = ["derive"] }
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 image = { version = "0.25.6", default-features = false, features = ["jpeg", "png"] }
 reqwest = { version = "0.12.18", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
@@ -15,9 +16,11 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 sha2 = "0.10.8"
 thiserror = "2.0.12"
+unicode-segmentation = "1.12.0"
 uuid = { version = "1.18.1", features = ["v7"] }
 xcap = { version = "0.9.4", features = ["image"] }
 
 [dev-dependencies]
+gpui = { version = "0.2.2", features = ["runtime_shaders", "test-support"] }
 mockito = "1.7.0"
 tempfile = "3.20.0"

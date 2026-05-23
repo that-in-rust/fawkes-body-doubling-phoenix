@@ -68,3 +68,29 @@
 - Whether active app and window metadata is easy enough to include in Milestone 0.
 - Whether screenshots should persist by default for debugging or only behind a debug flag.
 - What human-agreement threshold we want to call "good enough" after the first ten-capture run.
+
+### GPUI count-only spike result
+
+- Added a second binary entrypoint at `src/bin/fawkes_overlay.rs` without changing the existing CLI behavior in `src/main.rs`.
+- Built a super-minimal GPUI floating-window app with:
+  - task input
+  - interval-seconds input
+  - count input
+  - start button
+  - running state
+  - final summary state
+- Reused the existing probe library in-process through a new session launcher seam instead of spawning the CLI binary.
+- Added a programmatic config path so the GUI can build a validated `ProbeRunConfig` directly.
+- Added a one-line plain-language summary formatter for the GUI result panel.
+- Verified runtime artifacts still land in the existing ignored area:
+  - `.fawkes_probe/fawkes_probe.sqlite`
+  - `.fawkes_probe/runs/<run_id>/captures/`
+- Automated verification passed with the GUI included:
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo test --all-targets --all-features`
+  - `cargo build --all-targets --all-features`
+- Verified the overlay binary launches locally with:
+  - `cargo run --bin fawkes_overlay`
+- One local build truth mattered here:
+  - GPUI needed the `runtime_shaders` feature on this machine because the system has Apple Command Line Tools but not the full Xcode `metal` shader compiler.

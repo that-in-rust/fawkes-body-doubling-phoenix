@@ -123,13 +123,41 @@ impl RunSummary {
     }
 }
 
+pub fn format_plain_summary_sentence(summary: &RunSummary) -> String {
+    if summary.lines.is_empty() {
+        return "This run finished without any captured assessments.".to_owned();
+    }
+
+    if summary.error_count == summary.lines.len() {
+        return "This run failed before it could assess your work reliably.".to_owned();
+    }
+
+    if summary.off_task_count > summary.on_task_count {
+        return "This run drifted away from the task more often than it stayed on it.".to_owned();
+    }
+
+    if summary.on_task_count > 0 && summary.off_task_count == 0 && summary.error_count == 0 {
+        return "This run stayed on task throughout the session.".to_owned();
+    }
+
+    if summary.ambiguous_count > 0 {
+        return "This run stayed mostly on task, but a few moments were unclear.".to_owned();
+    }
+
+    if summary.error_count > 0 {
+        return "This run mostly stayed on task, but a few checks failed.".to_owned();
+    }
+
+    "This run stayed mostly on task.".to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
 
     use crate::core::types::{ActivityCategory, CaptureRecord, RunIdentifier, TaskStatus};
 
-    use super::summarize_capture_records;
+    use super::{format_plain_summary_sentence, summarize_capture_records};
 
     #[test]
     fn test_req_rust_004_summary_counts_match_records() {
@@ -150,5 +178,19 @@ mod tests {
             summary.lines[0].activity_category,
             Some(ActivityCategory::Coding)
         );
+    }
+
+    #[test]
+    fn test_req_rust_105_formats_plain_summary_sentence() {
+        let run_id = RunIdentifier::generate_now_identifier().to_string();
+        let records = vec![
+            CaptureRecord::test_record(Utc::now(), Some(TaskStatus::OffTask), None),
+            CaptureRecord::test_record(Utc::now(), Some(TaskStatus::OffTask), None),
+            CaptureRecord::test_record(Utc::now(), Some(TaskStatus::OnTask), None),
+        ];
+
+        let summary = summarize_capture_records(&run_id, &records);
+        let sentence = format_plain_summary_sentence(&summary);
+        assert!(sentence.contains("drifted away from the task"));
     }
 }
