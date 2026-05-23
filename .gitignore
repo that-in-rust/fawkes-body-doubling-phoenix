@@ -1,0 +1,26 @@
+# Reference repositories are for exploration only, not for in-repo edits.
+/reference-repos/
+
+# Rust workspace build output.
+/target/
+**/target/
+*.rs.bk
+*.pdb
+
+# Coverage and profiling artifacts.
+*.profraw
+*.profdata
+/coverage/
+/tarpaulin-report.html
+
+# Editor and OS noise.
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment files.
+.env
+.env.*
+!.env.example
